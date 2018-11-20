@@ -1,0 +1,295 @@
+---
+title: "678midterm"
+author: "Xinyi Wang"
+date: "11/17/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Read & Clean Data
+```{r warning=FALSE}
+setwd("/Users/CindyWang/Desktop/678/midterm project")
+flights <- read.csv("flights.csv")
+weather <- read.csv("weather.csv")
+airlines <- read.csv("airlines.csv")
+flights2 <- read.csv("flights2.csv")
+weather2 <- read.csv("weather2.csv")
+
+library(dplyr)
+train_weather <- weather %>%
+  select(NAME,DATE,WT01,WT02,WT03,WT05,WT08,SNOW,AWND,TAVG,PRCP) %>%
+  filter(NAME=="ATLANTA HARTSFIELD INTERNATIONAL AIRPORT, GA US") %>%
+  mutate(DAY_OF_MONTH = 1:31)
+train_weather[is.na(train_weather)] <- 0
+
+test_weather <- weather2 %>%
+  select(NAME,DATE,WT01,WT02,WT03,WT05,WT08,SNOW,AWND,TAVG,PRCP) %>%
+  filter(NAME=="ATLANTA HARTSFIELD INTERNATIONAL AIRPORT, GA US") %>%
+  mutate(DAY_OF_MONTH = 1:31)
+test_weather[is.na(test_weather)] <- 0
+
+#TRAIN
+##join "flights" and "weather"
+flights$X <- NULL
+train <- inner_join(flights,train_weather,by="DAY_OF_MONTH")
+
+##join "train" and "airlines" -> train
+names(airlines)[names(airlines) == "Code"] <- "OP_UNIQUE_CARRIER"
+train <- inner_join(train,airlines,by="OP_UNIQUE_CARRIER")
+
+##change the data class of the filtered data to enable data processing and running algorithms
+train$DAY_OF_MONTH <- as.factor(train$DAY_OF_MONTH)
+train$DAY_OF_WEEK <- as.factor(train$DAY_OF_WEEK)
+# train$DEP_TIME_BLK <- as.factor(train$DEP_TIME_BLK)
+train$ORIGIN <- as.character(train$ORIGIN)
+train$DEST_STATE_ABR <- as.character(train$DEST_STATE_ABR)
+
+#TEST
+##join "flights2" and "weather2"
+flights2$X <- NULL
+test <- inner_join(flights2,test_weather,by="DAY_OF_MONTH")
+
+##join "test" and "airlines" -> test
+names(airlines)[names(airlines) == "Code"] <- "OP_UNIQUE_CARRIER"
+test <- inner_join(test,airlines,by="OP_UNIQUE_CARRIER")
+
+##change the data class of the filtered data to enable data processing and running algorithms
+test$DAY_OF_MONTH <- as.factor(test$DAY_OF_MONTH)
+test$DAY_OF_WEEK <- as.factor(test$DAY_OF_WEEK)
+# train$DEP_TIME_BLK <- as.factor(train$DEP_TIME_BLK)
+test$ORIGIN <- as.character(test$ORIGIN)
+test$DEST_STATE_ABR <- as.character(test$DEST_STATE_ABR)
+
+##Clean "train"
+train$YEAR <- NULL
+train$DEP_DELAY_NEW <- NULL
+train$ARR_DELAY_NEW <- NULL
+train$MONTH <- NULL
+train$TAXI_IN <- NULL
+train$TAXI_OUT <- NULL
+train$WHEELS_ON <- NULL
+train$WHEELS_OFF <- NULL
+train$CANCELLED <- NULL
+
+##Clean "test"
+test$YEAR <- NULL
+test$DEP_DELAY_NEW <- NULL
+test$ARR_DELAY_NEW <- NULL
+test$MONTH <- NULL
+test$TAXI_IN <- NULL
+test$TAXI_OUT <- NULL
+test$WHEELS_ON <- NULL
+test$WHEELS_OFF <- NULL
+test$CANCELLED <- NULL
+
+train <- train %>% 
+  filter(ORIGIN=="ATL") %>%
+  mutate(total_delay=DEP_DELAY+ARR_DELAY) %>%
+  na.omit()
+
+test <- test %>% 
+  filter(ORIGIN=="ATL") %>%
+  mutate(total_delay=DEP_DELAY+ARR_DELAY) %>%
+  na.omit()
+  
+
+```
+
+#EDA
+1.This figure shows that the distribution of the outcome is right skewed, it has long tail in the high values. Here, some predictors are removed based on their lack of information content.
+```{r}
+library(ggplot2)
+ggplot(data = train, aes(total_delay)) +
+  geom_histogram(color="blue", bins = 500) +
+  geom_vline(aes(xintercept=mean(total_delay)),
+            color="red", linetype="dashed", size=1) +
+  labs(title="Distribution of total delay") +
+  theme_gray()
+```
+
+2.
+```{r}
+
+carrier_count <- train %>%
+  select(Description,DEP_DEL15) %>%
+  group_by(Description) %>%
+  summarise(total=n(),delay=sum(DEP_DEL15==1),percentage=(delay/total))
+
+carrier_bar <- ggplot(carrier_count,aes(x=reorder(Description,percentage),
+                                        y=percentage,fill=Description)) +
+  geom_bar(stat="identity") +
+  xlab("Airlines") +
+  ylab("Delay Rate(num. of delay(>15min) / total flights of specific airline)") +
+  scale_y_continuous(labels = scales::percent) +
+  coord_flip() +
+  theme_gray() +
+  theme(legend.position="none")
+
+  
+carrier_bar
+```
+
+3. 
+```{r}
+train <- train %>% 
+  mutate(TimeOfDay = cut(DEP_TIME, c(0, 600, 1200, 1800, 2400), 
+                     labels = c("Midnight", "Morning", "Afternoon","Evening"), right = TRUE))
+
+timeofday_count <- train %>%
+  select(TimeOfDay,DEP_DEL15) %>%
+  group_by(TimeOfDay) %>%
+  summarise(total=n(),delay=sum(DEP_DEL15==1),percentage=(delay/total))
+
+timeofday_bar <- ggplot(timeofday_count,aes(x=TimeOfDay,y=percentage,fill=TimeOfDay)) +
+  geom_bar(stat="identity") +
+  xlab("Time Of Day") +
+  ylab("Delay Rate") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_gray()
+timeofday_bar
+
+```
+
+4.
+```{r}
+dayofweek_count <- train %>%
+  select(DAY_OF_WEEK,DEP_DEL15) %>%
+  group_by(DAY_OF_WEEK) %>%
+  summarise(total=n(),delay=sum(DEP_DEL15==1),percentage=(delay/total))
+
+dayofweek_bar <- ggplot(dayofweek_count,aes(x=DAY_OF_WEEK,y=percentage,fill=DAY_OF_WEEK)) +
+  geom_bar(stat="identity") +
+  xlab("Day of Week") +
+  ylab("Delay Rate") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_gray()
+dayofweek_bar
+```
+
+5.This figure shows scatter plots of the predictors against the outcome along with a regression line from a flexible “smoother” model. According to these two figures, we can assume that the relationship between the predictors and the outcome is linear.
+```{r}
+library(cowplot) #Arranging plots in a grid
+fig1 <- ggplot(data=train, aes(x = AIR_TIME, y = total_delay)) +
+  geom_point(color ="deeppink2")+
+  geom_smooth(se=F)+
+  labs( x="Air Time(min)", y="Departure + arrival delays(min)")+
+  theme_bw()
+
+fig2 <- ggplot(data=train, aes(x = TAVG, y = total_delay)) +
+  geom_point(color ="deepskyblue3")+
+  geom_smooth(se=F)+
+  labs( x="Avg Temp(F)", y="Departure + arrival delays(min)")+
+  theme_bw()
+
+plot_grid(fig1, fig2)
+```
+
+6. correlation
+```{r}
+data.num <- Filter(is.numeric, train)
+data.num$DEP_TIME <- NULL
+data.num$DEP_DELAY <- NULL
+data.num$DEP_DELAY_GROUP <- NULL
+data.num$ARR_TIME <- NULL
+data.num$ARR_DELAY <- NULL
+data.num$ARR_DELAY_GROUP <- NULL
+correlations <- cor(data.num)
+# dim(correlations)
+# print(correlations)
+library(corrplot)
+corrplot(correlations,method="circle",na.label = "square", na.label.col = "white")
+```
+
+7.U.S heat map
+```{r}
+library(usmap)
+library(ggplot2)
+
+dest_count <- train %>%
+  select(DEST_STATE_ABR,DEP_DEL15) %>%
+  group_by(DEST_STATE_ABR) %>%
+  summarise(total=n(),delay=sum(DEP_DEL15==1),percentage=(delay/total)*100)
+dest_count <- as.data.frame(dest_count)
+names(dest_count)[names(dest_count) == 'DEST_STATE_ABR'] <- 'state'
+
+plot_usmap(data = dest_count, values = "percentage", lines = "red") + 
+  scale_fill_continuous(low = "white", high = "red",name = "Delay Rate", 
+                        label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+#Feature Selection
+```{r}
+str(train)
+##change the data class of the filtered data to enable data processing and running algorithms
+train$OP_UNIQUE_CARRIER <- as.factor(train$OP_UNIQUE_CARRIER)
+train$DEST_STATE_ABR <- as.factor(train$DEST_STATE_ABR)
+train$DEP_DEL15 <- as.factor(train$DEP_DEL15)
+train$ARR_DEL15 <- as.factor(train$ARR_DEL15)
+train$WT01 <- as.factor(train$WT01)
+train$WT02 <- as.factor(train$WT02)
+train$WT05 <- as.factor(train$WT05)
+train$WT08 <- as.factor(train$WT08)
+train$DEST <- as.factor(train$DEST)
+
+##Clean
+train$ORIGIN <- NULL
+train$ORIGIN_CITY_NAME <- NULL
+train$ORIGIN_STATE_ABR <- NULL
+train$DEST_CITY_NAME <- NULL
+train$DEP_TIME <- NULL
+train$ARR_TIME <- NULL
+train$NAME <- NULL
+train$DATE <- NULL
+train$Description <- NULL
+train$WT03 <- NULL
+train$WT05 <- NULL
+train$WT08 <- NULL
+train$DEP_DELAY_GROUP <- NULL
+train$ARR_DELAY_GROUP <- NULL
+train$DEST <- NULL
+
+
+# #try 1
+# library(Boruta)
+# set.seed(111)
+# boruta.bank_train <- Boruta(total_delay~., data = train, doTrace = 2)
+# print(boruta.bank_train)
+# 
+# # > print(boruta.bank_train)
+# # Boruta performed 99 iterations in 2.009221 hours.
+# #  17 attributes confirmed important: ARR_DEL15, ARR_DELAY, ARR_DELAY_GROUP,
+# # ARR_TIME_BLK, AWND and 12 more;
+# #  8 attributes confirmed unimportant: CANCELLED, DEST, DEST_STATE_ABR, TAIL_NUM, WT02
+# # and 3 more;
+# #  2 tentative attributes left: AIR_TIME, DISTANCE;
+# 
+# #try 2
+# base.mod <- lm(total_delay ~ 1 , data= train)  # base intercept only model
+# all.mod <- lm(total_delay ~ . , data= train) # full model with all predictors
+# stepMod <- step(base.mod, scope = list(lower = base.mod, upper = all.mod), direction = "forward", trace = 0)  # perform step-wise algorithm
+# shortlistedVars <- names(unlist(stepMod[[1]])) # get the shortlisted variable.
+# shortlistedVars <- shortlistedVars[!shortlistedVars %in% "(Intercept)"]  # remove intercept 
+# print(shortlistedVars)
+# 
+# #try 3
+# library(randomForest)
+# str(train)
+# rf=randomForest(total_delay ~ . , data = train)
+
+```
+
+
+#Model
+```{r}
+
+```
+
+
+
+
+
+

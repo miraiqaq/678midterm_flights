@@ -1,0 +1,70 @@
+---
+title: "Midterm Project Proposal"
+subtitle: Flight Delays Prediction
+author: "Xinyi Wang"
+date: "11/12/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##1.Introduction
+
+Every year in the United State of America, millions of passengers experience delays in flights, resulting in missing flights connections and distract the valuable time for people. Airlines won’t tell you if your flight is likely to be delayed or not.
+
+##2.Objective
+In this analysis, I try to develop a Multilevel regression model that aims to predict if a flight arrival will be delayed by 15 minutes or more which departed from Atlanta.
+
+##3.Data Preparation
+The 3 datasets I will use can be found & downloaded by navigating to the following link:
+-flights.csv & airlines.csv 
+  https://www.transtats.bts.gov/DL_SelectFields.asp
+-weather.csv:
+  https://www.ncdc.noaa.gov/cdo-web/
+
+The raw flight dataset contains 621,462 observations and 29 variables for US flights in January 2018. 
+```{r}
+setwd("/Users/CindyWang/Desktop/678/midterm project")
+flights <- read.csv("flights.csv")
+library(dplyr)
+glimpse(flights)
+```
+
+The raw weather dataset has 729 observations and 22 variables. For future analysis, I will join flight and weather datasets by date. Some of key variable will use are:
+
+  WT01-Fog,ice fog,or freezing fog(may include heavy fog)
+  
+  WT02-Heavy fog or heavy freezing fog(not always distinguished from fog)
+  
+  WT03-Thunder
+  
+  WT05-Hail(may include small hail)
+  
+  WT08-Smoke or haze
+  
+  SNOW-snow fall
+  
+  AWND-average wind speed
+  
+  TAVG-average temperature
+  
+  PRCP-precipitation
+  
+The airlines.csv contains translation between two letter rrier code and names of US airlines. I will aldo join this with flights dataset.
+
+##4.Next Steps
+-Clean Data
+
+-Exploratory Data Analysis
+
+-Modeling and Prediction
+
+-Model Check
+
+
+
+
+
+
