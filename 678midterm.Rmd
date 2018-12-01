@@ -9,6 +9,7 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+#*This is just a draft, will modify and polish after get some feedback*
 #Read & Clean Data
 ```{r warning=FALSE}
 setwd("/Users/CindyWang/Desktop/678/midterm_project")
@@ -21,13 +22,13 @@ rank <- read.csv("rank.csv")
 
 library(dplyr)
 train_weather <- weather %>%
-  select(NAME,DATE,WT01,WT02,WT03,WT05,WT08,SNOW,AWND,TAVG,PRCP) %>%
+  dplyr::select(NAME,DATE,WT01,WT02,WT03,WT05,WT08,SNOW,AWND,TAVG,PRCP) %>%
   filter(NAME=="ATLANTA HARTSFIELD INTERNATIONAL AIRPORT, GA US") %>%
   mutate(DAY_OF_MONTH = 1:31)
 train_weather[is.na(train_weather)] <- 0
 
 test_weather <- weather2 %>%
-  select(NAME,DATE,WT01,WT02,WT03,WT05,WT08,SNOW,AWND,TAVG,PRCP) %>%
+  dplyr::select(NAME,DATE,WT01,WT02,WT03,WT05,WT08,SNOW,AWND,TAVG,PRCP) %>%
   filter(NAME=="ATLANTA HARTSFIELD INTERNATIONAL AIRPORT, GA US") %>%
   mutate(DAY_OF_MONTH = 1:31)
 test_weather[is.na(test_weather)] <- 0
@@ -43,7 +44,7 @@ train <- inner_join(train,airlines,by="OP_UNIQUE_CARRIER")
 
 ##join "train" and "rank"
 names(rank)[names(rank) == "Code"] <- "OP_UNIQUE_CARRIER"
-rank <- rank %>% select(OP_UNIQUE_CARRIER,Rank)
+rank <- rank %>% dplyr::select(OP_UNIQUE_CARRIER,Rank)
 train <- inner_join(train,rank,by="OP_UNIQUE_CARRIER")
 
 ##change the data class of the filtered data to enable data processing and running algorithms
@@ -108,24 +109,46 @@ test <- test %>%
 ```
 
 #EDA
-1.This figure shows that the distribution of the outcome is right skewed, it has long tail in the high values. Here, some predictors are removed based on their lack of information content.
+1.This figure shows that the distribution of the outcome is right skewed, it has long tail in the high values. 
+And we can see from the plot that most of flights are delay less than 25min but there are some outliers(flight delay alomost 3000min).
 ```{r}
 library(ggplot2)
-ggplot(data = train, aes(total_delay)) +
+ggplot(data = train, aes(x=total_delay)) +
   geom_histogram(color="blue", bins = 500) +
   geom_vline(aes(xintercept=mean(total_delay)),
             color="red", linetype="dashed", size=1) +
   labs(title="Distribution of total delay") +
   theme_gray()
+mean(train$total_delay)
 ```
 
+```{r}
+# train$delay_pos<-train$total_delay
+# train$delay_pos[train$total_delay<=0]<-0
+# 
+# ggplot(data = train, aes(x=DAY_OF_MONTH,y=log10(delay_pos/60),color=factor(OP_UNIQUE_CARRIER))) +
+#   geom_point(alpha=0.1) +
+#   labs(title="Distribution of total delay") +
+#   geom_smooth(method="lm",se=FALSE)+ theme(legend.position="none")+
+#   theme_gray()
+# 
+#  geom_vline(aes(xintercept=mean(total_delay)),
+#             color="red", linetype="dashed", size=1) +
+
+
+# library(ggplot2)
+# ggplot(data = train[train$total_delay>0,], aes(x=(total_delay/60)^(-1/5))) +
+#   geom_histogram(color="blue", bins = 500) +
+#   geom_vline(aes(xintercept=mean(total_delay)),
+#             color="red", linetype="dashed", size=1) +
+#   labs(title="Distribution of total delay")
+```
 2.
 ```{r}
-
 carrier_count <- train %>%
-  select(Description,DEP_DEL15) %>%
+  dplyr::select(Description,ARR_DEL15) %>%
   group_by(Description) %>%
-  summarise(total=n(),delay=sum(DEP_DEL15==1),percentage=(delay/total))
+  summarise(total=n(),delay=sum(ARR_DEL15==1),percentage=(delay/total))
 
 carrier_bar <- ggplot(carrier_count,aes(x=reorder(Description,percentage),
                                         y=percentage,fill=Description)) +
@@ -148,9 +171,9 @@ train <- train %>%
                      labels = c("Midnight", "Morning", "Afternoon","Evening"), right = TRUE))
 
 timeofday_count <- train %>%
-  select(TimeOfDay,DEP_DEL15) %>%
+  dplyr::select(TimeOfDay,ARR_DEL15) %>%
   group_by(TimeOfDay) %>%
-  summarise(total=n(),delay=sum(DEP_DEL15==1),percentage=(delay/total))
+  summarise(total=n(),delay=sum(ARR_DEL15==1),percentage=(delay/total))
 
 timeofday_bar <- ggplot(timeofday_count,aes(x=TimeOfDay,y=percentage,fill=TimeOfDay)) +
   geom_bar(stat="identity") +
@@ -165,9 +188,9 @@ timeofday_bar
 4.
 ```{r}
 dayofweek_count <- train %>%
-  select(DAY_OF_WEEK,DEP_DEL15) %>%
+  dplyr::select(DAY_OF_WEEK,ARR_DEL15) %>%
   group_by(DAY_OF_WEEK) %>%
-  summarise(total=n(),delay=sum(DEP_DEL15==1),percentage=(delay/total))
+  summarise(total=n(),delay=sum(ARR_DEL15==1),percentage=(delay/total))
 
 dayofweek_bar <- ggplot(dayofweek_count,aes(x=DAY_OF_WEEK,y=percentage,fill=DAY_OF_WEEK)) +
   geom_bar(stat="identity") +
@@ -217,15 +240,10 @@ correlations <- cor(data.num)
 # print(correlations)
 
 library(corrplot)
-# corrplot(correlations,method="circle",na.label = "square", na.label.col = "white")
 corrplot(correlations,method="circle")
 
-# library(caret)
-# highCorr <- findCorrelation(correlations, cutoff = .75)
-# length(highCorr)
-# names(data.num[,highCorr])
-# ##The variables "ARR_DEL15" and "AIR_TIME" are highly correlated with others predictors. 
-# train <- train %>% select(-ARR_DEL15,-AIR_TIME)
+##The variables "DEP_DEL15" and "AIR_TIME" are highly correlated with others predictors.
+# train <- train %>% select(-DEP_DEL15,-AIR_TIME)
 ```
 
 7.U.S heat map
@@ -234,9 +252,9 @@ library(usmap)
 library(ggplot2)
 
 dest_count <- train %>%
-  select(DEST_STATE_ABR,DEP_DEL15) %>%
+  dplyr::select(DEST_STATE_ABR,ARR_DEL15) %>%
   group_by(DEST_STATE_ABR) %>%
-  summarise(total=n(),delay=sum(DEP_DEL15==1),percentage=(delay/total)*100)
+  summarise(total=n(),delay=sum(ARR_DEL15==1),percentage=(delay/total)*100)
 dest_count <- as.data.frame(dest_count)
 names(dest_count)[names(dest_count) == 'DEST_STATE_ABR'] <- 'state'
 
@@ -252,7 +270,6 @@ plot_usmap(data = dest_count, values = "percentage", lines = "red") +
 ##change the data class of the filtered data to enable data processing and running algorithms
 train$OP_UNIQUE_CARRIER <- as.factor(train$OP_UNIQUE_CARRIER)
 train$DEST_STATE_ABR <- as.factor(train$DEST_STATE_ABR)
-train$DEP_DEL15 <- as.factor(train$DEP_DEL15)
 train$ARR_DEL15 <- as.factor(train$ARR_DEL15)
 train$WT01 <- as.factor(train$WT01)
 train$WT02 <- as.factor(train$WT02)
@@ -271,7 +288,7 @@ train$ARR_TIME <- NULL
 train$NAME <- NULL
 train$DATE <- NULL
 train$Description <- NULL
-# train$WT03 <- NULL
+train$WT03 <- NULL
 train$WT05 <- NULL
 train$WT08 <- NULL
 train$DEP_DELAY_GROUP <- NULL
@@ -280,20 +297,20 @@ train$DEST <- NULL
 
 # str(train)
 
-#try 1
-library(Boruta)
-set.seed(111)
-boruta.bank_train <- Boruta(total_delay~., data = train, doTrace = 2)
-print(boruta.bank_train)
+#try 1(keep)
+# library(Boruta)
+# boruta_output <- Boruta(total_delay~., data = train, doTrace = 2)
+# boruta_signif <- names(boruta_output$finalDecision[boruta_output$finalDecision %in% c("Confirmed", "Tentative")])
+# print(boruta_signif)
+# plot(boruta_output, cex.axis=.5, las=2, xlab="", main="Variable Importance")
+## Boruta performed 99 iterations in 6.7969 mins.
+## 16 attributes confirmed important: AIR_TIME, ARR_DEL15, ARR_DELAY, AWND, DAY_OF_MONTH and 11 more;
+## 2 attributes confirmed unimportant: DEST_STATE_ABR, SNOW;
+## 1 tentative attributes left: WT03;
 
-# # > print(boruta.bank_train)
-# # Boruta performed 99 iterations in 2.009221 hours.
-# #  17 attributes confirmed important: ARR_DEL15, ARR_DELAY, ARR_DELAY_GROUP,
-# # ARR_TIME_BLK, AWND and 12 more;
-# #  8 attributes confirmed unimportant: CANCELLED, DEST, DEST_STATE_ABR, TAIL_NUM, WT02
-# # and 3 more;
-# #  2 tentative attributes left: AIR_TIME, DISTANCE;
-# 
+# train <- train %>% select(-DEST_STATE_ABR,-SNOW,-DEP_DELAY,-ARR_DELAY)
+train <- train %>% dplyr::select(-DEST_STATE_ABR,-SNOW)
+
 # #try 2
 # base.mod <- lm(total_delay ~ 1 , data= train)  # base intercept only model
 # all.mod <- lm(total_delay ~ . , data= train) # full model with all predictors
@@ -310,10 +327,90 @@ print(boruta.bank_train)
 ```
 
 
-#Model
+#test sample
 ```{r}
+#use "ARR_DEL15" as y
+test <- test %>%
+  mutate(TimeOfDay = cut(DEP_TIME, c(0, 600, 1200, 1800, 2400),
+                     labels = c("Midnight", "Morning", "Afternoon","Evening"), right = TRUE)) %>%
+  dplyr::select(DAY_OF_MONTH,DAY_OF_WEEK,OP_UNIQUE_CARRIER,DEP_DEL15,ARR_DEL15,AIR_TIME,DISTANCE,WT01,WT02,AWND,TAVG,PRCP,TimeOfDay) %>%
+  filter(!OP_UNIQUE_CARRIER %in% setdiff(test$OP_UNIQUE_CARRIER,train$OP_UNIQUE_CARRIER))
+
+
+test$OP_UNIQUE_CARRIER <- as.factor(test$OP_UNIQUE_CARRIER)
+test$ARR_DEL15 <- as.factor(test$ARR_DEL15)
+test$DEP_DEL15 <- as.factor(test$DEP_DEL15)
+test$WT01 <- as.factor(test$WT01)
+test$WT02 <- as.factor(test$WT02)
+test$DAY_OF_MONTH <- as.numeric(test$DAY_OF_MONTH)
+train$DAY_OF_MONTH <- as.numeric(train$DAY_OF_MONTH)
+
+
+#################
+# ##use "total_delay" as y
+# test <- test %>% 
+#   mutate(TimeOfDay = cut(DEP_TIME, c(0, 600, 1200, 1800, 2400), 
+#                      labels = c("Midnight", "Morning", "Afternoon","Evening"), right = TRUE)) %>%
+#   select(DAY_OF_MONTH,DAY_OF_WEEK,OP_UNIQUE_CARRIER,ARR_DEL15,DEP_DEL15,AIR_TIME,DISTANCE,WT01,WT02,AWND,TAVG,PRCP,Rank,total_delay,TimeOfDay)
+# 
+# test$OP_UNIQUE_CARRIER <- as.factor(test$OP_UNIQUE_CARRIER)
+# test$ARR_DEL15 <- as.factor(test$ARR_DEL15)
+# test$DEP_DEL15 <- as.factor(test$DEP_DEL15)
+# test$WT01 <- as.factor(test$WT01)
+# test$WT02 <- as.factor(test$WT02)
+# test$Rank <- as.factor(test$Rank)
+# 
+# train <- train %>% select(-DEP_DELAY,-ARR_DELAY)
+# train$DAY_OF_WEEK <- as.factor(train$DAY_OF_WEEK)
 
 ```
+
+
+
+#Model
+```{r warning=FALSE}
+# str(train)
+
+# ## linear model
+# m1 <- lm(total_delay ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_UNIQUE_CARRIER + DEP_DEL15 + ARR_DEL15 +
+#            AIR_TIME  + WT01 + WT02 + AWND + TAVG + PRCP + 
+#            Rank + TimeOfDay, data = train)
+# summary(m1)
+# 
+# plot(m1, which = 1)
+# par(mfrow= c(2,3))
+# plot(m1, which = 1:6)
+# 
+# ## multilevel model
+# library(lme4)
+# m2 <- lmer(scale(total_delay) ~ DAY_OF_MONTH + DAY_OF_WEEK + DEP_DEL15 + ARR_DEL15 +AIR_TIME + DISTANCE + WT01 + WT02 + AWND + TAVG + PRCP + Rank + TimeOfDay + (1|OP_UNIQUE_CARRIER), data = train)
+# summary(m2)
+
+
+##logistic model
+library(car)
+library(lme4)
+m3 <- glmer(ARR_DEL15 ~ DAY_OF_MONTH  + (1|OP_UNIQUE_CARRIER)  + WT01 + WT02 + AWND + TAVG + PRCP + 
+           DAY_OF_WEEK + TimeOfDay + DISTANCE, data = train,  family = binomial(link = "logit"))
+summary(m3)
+# marginalModelPlots(m3)
+
+m3.predict <- predict(m3, test,type="response")
+m3.predict <- ifelse(m3.predict > 0.5,1,0)
+head(m3.predict)
+m3.predict <- as.factor(m3.predict)
+compare <- data.frame(obs = test$ARR_DEL15, pred = m3.predict)
+
+library(caret)
+confusionMatrix(m3.predict, test$ARR_DEL15)
+
+library(arm)
+binnedplot(fitted(m3),residuals(m3,type="response"))
+
+
+
+```
+
 
 
 
