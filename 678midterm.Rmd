@@ -119,7 +119,7 @@ ggplot(data = train, aes(x=total_delay)) +
             color="red", linetype="dashed", size=1) +
   labs(title="Distribution of total delay") +
   theme_gray()
-mean(train$total_delay)
+# mean(train$total_delay)
 ```
 
 ```{r}
@@ -241,7 +241,7 @@ correlations <- cor(data.num)
 
 library(corrplot)
 corrplot(correlations,method="circle")
-
+# corrplot(correlations)
 ##The variables "DEP_DEL15" and "AIR_TIME" are highly correlated with others predictors.
 # train <- train %>% select(-DEP_DEL15,-AIR_TIME)
 ```
@@ -324,12 +324,14 @@ train <- train %>% dplyr::select(-DEST_STATE_ABR,-SNOW)
 # str(train)
 # rf=randomForest(total_delay ~ . , data = train)
 
+
+
 ```
 
 
 #test sample
 ```{r}
-#use "ARR_DEL15" as y
+# #use "ARR_DEL15" as y
 test <- test %>%
   mutate(TimeOfDay = cut(DEP_TIME, c(0, 600, 1200, 1800, 2400),
                      labels = c("Midnight", "Morning", "Afternoon","Evening"), right = TRUE)) %>%
@@ -347,21 +349,25 @@ train$DAY_OF_MONTH <- as.numeric(train$DAY_OF_MONTH)
 
 
 #################
-# ##use "total_delay" as y
-# test <- test %>% 
-#   mutate(TimeOfDay = cut(DEP_TIME, c(0, 600, 1200, 1800, 2400), 
+##use "total_delay" as y
+# test <- test %>%
+#   mutate(TimeOfDay = cut(DEP_TIME, c(0, 600, 1200, 1800, 2400),
 #                      labels = c("Midnight", "Morning", "Afternoon","Evening"), right = TRUE)) %>%
-#   select(DAY_OF_MONTH,DAY_OF_WEEK,OP_UNIQUE_CARRIER,ARR_DEL15,DEP_DEL15,AIR_TIME,DISTANCE,WT01,WT02,AWND,TAVG,PRCP,Rank,total_delay,TimeOfDay)
+#   select(DAY_OF_MONTH,DAY_OF_WEEK,OP_UNIQUE_CARRIER,ARR_DEL15,DEP_DEL15,AIR_TIME,DISTANCE,WT01,WT02,AWND,TAVG,PRCP,Rank,total_delay,TimeOfDay) %>%
+#   filter(OP_UNIQUE_CARRIER %in% train$OP_UNIQUE_CARRIER)
 # 
 # test$OP_UNIQUE_CARRIER <- as.factor(test$OP_UNIQUE_CARRIER)
 # test$ARR_DEL15 <- as.factor(test$ARR_DEL15)
 # test$DEP_DEL15 <- as.factor(test$DEP_DEL15)
 # test$WT01 <- as.factor(test$WT01)
 # test$WT02 <- as.factor(test$WT02)
-# test$Rank <- as.factor(test$Rank)
+# # test$Rank <- as.factor(test$Rank)
+# test$DAY_OF_MONTH <- as.numeric(test$DAY_OF_MONTH)
+# train$DAY_OF_MONTH <- as.numeric(train$DAY_OF_MONTH)
 # 
 # train <- train %>% select(-DEP_DELAY,-ARR_DELAY)
 # train$DAY_OF_WEEK <- as.factor(train$DAY_OF_WEEK)
+# train$DEP_DEL15 <- as.factor(train$DEP_DEL15)
 
 ```
 
@@ -371,45 +377,95 @@ train$DAY_OF_MONTH <- as.numeric(train$DAY_OF_MONTH)
 ```{r warning=FALSE}
 # str(train)
 
-# ## linear model
+## linear model
+# train <- train[train$total_delay<=1440,]
+# test <- test[test$total_delay<=1440,]
 # m1 <- lm(total_delay ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_UNIQUE_CARRIER + DEP_DEL15 + ARR_DEL15 +
-#            AIR_TIME  + WT01 + WT02 + AWND + TAVG + PRCP + 
-#            Rank + TimeOfDay, data = train)
+#            AIR_TIME + WT01 + WT02 + AWND + TAVG + PRCP + TimeOfDay, data = train)
 # summary(m1)
-# 
 # plot(m1, which = 1)
+# 
 # par(mfrow= c(2,3))
 # plot(m1, which = 1:6)
 # 
+# m1.predict <- predict(m1, test)
+# actuals_preds <- data.frame(cbind(actuals=test$total_delay, predicteds=m1.predict))
+# correlation_accuracy <- cor(actuals_preds)
+# correlation_accuracy
+# head(actuals_preds)
+# 
+# library(car)
+# marginalModelPlots(m1)
+
+# min_max_accuracy <- mean(apply(actuals_preds, 1, min) / apply(actuals_preds, 1, max))
+# min_max_accuracy
+# mape <- mean(abs((actuals_preds$predicteds - actuals_preds$actuals))/actuals_preds$actuals)
+# mape
+
+
+
+
 # ## multilevel model
 # library(lme4)
 # m2 <- lmer(scale(total_delay) ~ DAY_OF_MONTH + DAY_OF_WEEK + DEP_DEL15 + ARR_DEL15 +AIR_TIME + DISTANCE + WT01 + WT02 + AWND + TAVG + PRCP + Rank + TimeOfDay + (1|OP_UNIQUE_CARRIER), data = train)
 # summary(m2)
 
 
+# ##multilevel logistic model
+# library(car)
+# library(lme4)
+# m3 <- glmer(ARR_DEL15 ~ DAY_OF_MONTH  + (1|OP_UNIQUE_CARRIER)  + WT01 + WT02 + AWND + TAVG + PRCP + 
+#            DAY_OF_WEEK + TimeOfDay + DISTANCE, data = train,  family = binomial(link = "logit"))
+# summary(m3)
+# # marginalModelPlots(m3)
+# 
+# m3.predict <- predict(m3, test,type="response")
+# m3.predict <- ifelse(m3.predict > 0.5,1,0)
+# head(m3.predict)
+# m3.predict <- as.factor(m3.predict)
+# compare <- data.frame(obs = test$ARR_DEL15, pred = m3.predict)
+# library(caret)
+# confusionMatrix(m3.predict, test$ARR_DEL15)
+
+
 ##logistic model
 library(car)
-library(lme4)
-m3 <- glmer(ARR_DEL15 ~ DAY_OF_MONTH  + (1|OP_UNIQUE_CARRIER)  + WT01 + WT02 + AWND + TAVG + PRCP + 
+m4 <- glm(ARR_DEL15 ~ DAY_OF_MONTH  + OP_UNIQUE_CARRIER  + WT01 + WT02 + AWND + TAVG + PRCP +
            DAY_OF_WEEK + TimeOfDay + DISTANCE, data = train,  family = binomial(link = "logit"))
-summary(m3)
-# marginalModelPlots(m3)
+summary(m4)
+marginalModelPlots(m4)
+#Marginal model plot drawing response variable against each predictors and linear predictor. Fitted values are compared to observed data.
 
-m3.predict <- predict(m3, test,type="response")
-m3.predict <- ifelse(m3.predict > 0.5,1,0)
-head(m3.predict)
-m3.predict <- as.factor(m3.predict)
-compare <- data.frame(obs = test$ARR_DEL15, pred = m3.predict)
-
+m4.predict <- predict(m4, test,type="response")
+m4.predict <- ifelse(m4.predict > 0.5,1,0)
+head(m4.predict)
+m4.predict <- as.factor(m4.predict)
+compare <- data.frame(obs = test$ARR_DEL15, pred = m4.predict)
 library(caret)
-confusionMatrix(m3.predict, test$ARR_DEL15)
+confusionMatrix(m4.predict, test$ARR_DEL15)
 
+##model test
+#binned residual plot
 library(arm)
-binnedplot(fitted(m3),residuals(m3,type="response"))
+binnedplot(fitted(m4),residuals(m4,type="response"))
+library(car)
+residualPlots(m4)
 
+#ROC
+library(pROC)
+rocCurve <- roc(response = test$ARR_DEL15, predictor = as.numeric(m4.predict), levels = rev(levels(test$ARR_DEL15)))
+plot(rocCurve, legacy.axes = TRUE)
+
+
+library(randomForest) 
+random_forest <- randomForest(train[-7], train$ARR_DEL15, proximity = TRUE, importance = TRUE)
+random_forest
+random_forest_validation <- predict(random_forest, test)
 
 
 ```
+
+
 
 
 
