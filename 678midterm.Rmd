@@ -1,24 +1,44 @@
 ---
-title: "678midterm"
+title: "678 Midterm Project"
+subtitle: "Flights Arrival Delay Prediction"
 author: "Xinyi Wang"
 date: "11/17/2018"
 output: pdf_document
+sansfont: Arial
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-#*This is just a draft, will modify and polish after get some feedback*
-#Read & Clean Data
-```{r warning=FALSE}
+#1 Abstract
+
+###The inconveniences resulted from flight delays have been a long-time challenge for passengers, airports and airlines. This report establishes two models under the assumptions of logistic regression, discussing the “Airline on-time performance” data and applying The R Programming Language to predict flight arrival delays. By applying Boruta feature selection method and checking correlation bewteen all varibales, the models finally used 10 variables among 33 variables. After comparing with Multilevel Logistic Regression Model, the Logistic Regression which is no pooling model has higher accuracy with 67.32%. Some of model checking method such as Binned Residual Plot are also support a fair performance of the model.
+
+#2 Introduction
+
+##2.1 Background 
+
+###Every year in the United State of America, millions of passengers experience delays in flights, resulting in missing flights connections and distract the valuable time for people. According to the study conducted by the U.S. Federal Aviation Administration (FAA) in 2010, 32.9 billion US$ was borne by the American passengers and airlines as a result of flight delays. Airlines won’t tell you if your flight is likely to be delayed or not. In this analysis I try to develop a model that aims to predict if a flight arrival will be delayed by 15 minutes or more which departed from Atlanta.
+
+#3 Method
+
+##3.1 Data source
+
+###The 3 datasets I will use can be found & downloaded by navigating to the following link:
+
+###-flights.csv & airlines.csv : https://www.transtats.bts.gov/DL_SelectFields.asp
+  
+###-weather.csv : https://www.ncdc.noaa.gov/cdo-web/
+
+###3.1.1 Read & Clean Data
+```{r,warning=FALSE,echo=FALSE,message=FALSE}
 setwd("/Users/CindyWang/Desktop/678/midterm_project")
 flights <- read.csv("flights.csv")
 weather <- read.csv("weather.csv")
 airlines <- read.csv("airlines.csv")
 flights2 <- read.csv("flights2.csv")
 weather2 <- read.csv("weather2.csv")
-rank <- read.csv("rank.csv")
 
 library(dplyr)
 train_weather <- weather %>%
@@ -42,15 +62,9 @@ train <- inner_join(flights,train_weather,by="DAY_OF_MONTH")
 names(airlines)[names(airlines) == "Code"] <- "OP_UNIQUE_CARRIER"
 train <- inner_join(train,airlines,by="OP_UNIQUE_CARRIER")
 
-##join "train" and "rank"
-names(rank)[names(rank) == "Code"] <- "OP_UNIQUE_CARRIER"
-rank <- rank %>% dplyr::select(OP_UNIQUE_CARRIER,Rank)
-train <- inner_join(train,rank,by="OP_UNIQUE_CARRIER")
-
 ##change the data class of the filtered data to enable data processing and running algorithms
-train$DAY_OF_MONTH <- as.factor(train$DAY_OF_MONTH)
+train$DAY_OF_MONTH <- as.numeric(train$DAY_OF_MONTH)
 train$DAY_OF_WEEK <- as.factor(train$DAY_OF_WEEK)
-# train$DEP_TIME_BLK <- as.factor(train$DEP_TIME_BLK)
 train$ORIGIN <- as.character(train$ORIGIN)
 train$DEST_STATE_ABR <- as.character(train$DEST_STATE_ABR)
 
@@ -63,15 +77,21 @@ test <- inner_join(flights2,test_weather,by="DAY_OF_MONTH")
 names(airlines)[names(airlines) == "Code"] <- "OP_UNIQUE_CARRIER"
 test <- inner_join(test,airlines,by="OP_UNIQUE_CARRIER")
 
-##join "train" and "rank"
-test <- inner_join(test,rank,by="OP_UNIQUE_CARRIER")
-
 ##change the data class of the filtered data to enable data processing and running algorithms
-test$DAY_OF_MONTH <- as.factor(test$DAY_OF_MONTH)
+test$DAY_OF_MONTH <- as.numeric(test$DAY_OF_MONTH)
 test$DAY_OF_WEEK <- as.factor(test$DAY_OF_WEEK)
-# train$DEP_TIME_BLK <- as.factor(train$DEP_TIME_BLK)
 test$ORIGIN <- as.character(test$ORIGIN)
 test$DEST_STATE_ABR <- as.character(test$DEST_STATE_ABR)
+
+train <- train %>% 
+  filter(ORIGIN=="ATL") %>%
+  mutate(total_delay=DEP_DELAY+ARR_DELAY) %>%
+  na.omit()
+
+test <- test %>% 
+  filter(ORIGIN=="ATL") %>%
+  mutate(total_delay=DEP_DELAY+ARR_DELAY) %>%
+  na.omit()
 
 ##Clean "train"
 train$YEAR <- NULL
@@ -83,68 +103,39 @@ train$TAXI_OUT <- NULL
 train$WHEELS_ON <- NULL
 train$WHEELS_OFF <- NULL
 train$CANCELLED <- NULL
-
-##Clean "test"
-test$YEAR <- NULL
-test$DEP_DELAY_NEW <- NULL
-test$ARR_DELAY_NEW <- NULL
-test$MONTH <- NULL
-test$TAXI_IN <- NULL
-test$TAXI_OUT <- NULL
-test$WHEELS_ON <- NULL
-test$WHEELS_OFF <- NULL
-test$CANCELLED <- NULL
-
-train <- train %>% 
-  filter(ORIGIN=="ATL") %>%
-  mutate(total_delay=DEP_DELAY+ARR_DELAY) %>%
-  na.omit()
-
-test <- test %>% 
-  filter(ORIGIN=="ATL") %>%
-  mutate(total_delay=DEP_DELAY+ARR_DELAY) %>%
-  na.omit()
-  
+train$ORIGIN_CITY_NAME <- NULL
+train$DEST <- NULL
+train$DEST_CITY_NAME <- NULL
+train$DEP_DELAY_GROUP <- NULL
+train$ARR_TIME <- NULL
+train$ARR_DELAY_GROUP <- NULL
+train$NAME <- NULL
+train$DATE <- NULL
+train$ORIGIN <- NULL
 
 ```
 
-#EDA
-1.This figure shows that the distribution of the outcome is right skewed, it has long tail in the high values. 
-And we can see from the plot that most of flights are delay less than 25min but there are some outliers(flight delay alomost 3000min).
 ```{r}
+str(train)
+```
+
+###The raw flights dataset contains 450,017 observations and 28 variables for US flights in January 2017. The raw weather dataset has 729 observations and 22 variables. For future analysis, I will join flights and weather datasets by date. The airlines.csv contains translation between two letter rrier code and names of US airlines. I will aldo join this with flights dataset. Some of the columns are useless to our data analysis, so we NULL ’em to get my train dataset which is flights history from Jan. 2017. I applied same method for test data, which is flights history from Jan. 2018. Above displays the basic structure for my train dataset after remove NAs.  
+ 
+###3.1.2 EDA
+
+```{r,echo=FALSE,message=FALSE}
 library(ggplot2)
 ggplot(data = train, aes(x=total_delay)) +
   geom_histogram(color="blue", bins = 500) +
   geom_vline(aes(xintercept=mean(total_delay)),
             color="red", linetype="dashed", size=1) +
-  labs(title="Distribution of total delay") +
+  labs(title="Fig 1. Distribution of total delay") +
   theme_gray()
-# mean(train$total_delay)
 ```
 
-```{r}
-# train$delay_pos<-train$total_delay
-# train$delay_pos[train$total_delay<=0]<-0
-# 
-# ggplot(data = train, aes(x=DAY_OF_MONTH,y=log10(delay_pos/60),color=factor(OP_UNIQUE_CARRIER))) +
-#   geom_point(alpha=0.1) +
-#   labs(title="Distribution of total delay") +
-#   geom_smooth(method="lm",se=FALSE)+ theme(legend.position="none")+
-#   theme_gray()
-# 
-#  geom_vline(aes(xintercept=mean(total_delay)),
-#             color="red", linetype="dashed", size=1) +
+###Fig 1 shows that the distribution of the outcome is right skewed, it has long tail in the high values. And we can see from the plot that most of flights are delay less than 25min but there are some outliers(flight delay alomost 3000min). Under this situation, I choose "ARR_DEL15" (a binary number indicates weather a flight delay 15 min or not) as my outcome instead of using total delay time.
 
-
-# library(ggplot2)
-# ggplot(data = train[train$total_delay>0,], aes(x=(total_delay/60)^(-1/5))) +
-#   geom_histogram(color="blue", bins = 500) +
-#   geom_vline(aes(xintercept=mean(total_delay)),
-#             color="red", linetype="dashed", size=1) +
-#   labs(title="Distribution of total delay")
-```
-2.
-```{r}
+```{r,echo=FALSE,message=FALSE}
 carrier_count <- train %>%
   dplyr::select(Description,ARR_DEL15) %>%
   group_by(Description) %>%
@@ -154,100 +145,96 @@ carrier_bar <- ggplot(carrier_count,aes(x=reorder(Description,percentage),
                                         y=percentage,fill=Description)) +
   geom_bar(stat="identity") +
   xlab("Airlines") +
-  ylab("Delay Rate(num. of delay(>15min) / total flights of specific airline)") +
+  ylab("Delay Rate") +
   scale_y_continuous(labels = scales::percent) +
   coord_flip() +
   theme_gray() +
+  labs(title="Fig 2. Probability of Delay across Airlines") +
   theme(legend.position="none")
 
-  
 carrier_bar
 ```
 
-3. 
-```{r}
+###Fig 2 shows the probability of delay across different airlines. The delay rate is calculate by number of delay(>15min) / total flights of specific airline. It shows that Frontier Airline has the highest delay rate among those 9 airlines. On the contrary, Delta Airline has the lowest delay rate. 
+
+```{r,echo=FALSE,message=FALSE}
+delay_count <- train %>%
+  group_by(ARR_DEL15) %>%
+  summarise(count=n()) %>%
+  mutate(p=count/sum(count))
+
+x <- delay_count$p
+labels <- c("Delay<15min", "Delay>15min")
+pct <- round(x/sum(x)*100)
+lbls <- paste(labels, ":",pct) 
+lbls <- paste(lbls,"%",sep="") 
+colors <- c("Pink","orange")
+pie(x,labels = lbls, col=colors,main="Fig 3.Pie Chart of Delay Distribution")
+```
+
+###Fig 3 is the Pie chart of Delay distribution. It is clear that most of flights were delayed less than 15 minutes. Delay < 15min flights is about 4 times as much as Delay < 15min flights. To improve performance of the model, I resample the train dataset to creates possibly balanced sample by using the following method:
+
+```{r,message=FALSE}
+library(ROSE)
+set.seed(321)
+train<-ovun.sample(ARR_DEL15~.,data = train,method = "under")$data
+```
+
+```{r,echo=FALSE,message=FALSE}
 train <- train %>% 
   mutate(TimeOfDay = cut(DEP_TIME, c(0, 600, 1200, 1800, 2400), 
                      labels = c("Midnight", "Morning", "Afternoon","Evening"), right = TRUE))
 
 timeofday_count <- train %>%
-  dplyr::select(TimeOfDay,ARR_DEL15) %>%
-  group_by(TimeOfDay) %>%
-  summarise(total=n(),delay=sum(ARR_DEL15==1),percentage=(delay/total))
+  group_by(TimeOfDay,ARR_DEL15) %>%
+  summarise(count=n()) %>%
+  mutate(all=sum(count)) %>%
+  mutate(percentage=count/all)
 
-timeofday_bar <- ggplot(timeofday_count,aes(x=TimeOfDay,y=percentage,fill=TimeOfDay)) +
+timeofday_bar <- ggplot(timeofday_count,aes(x=TimeOfDay,y=percentage,fill=as.factor(ARR_DEL15))) +
   geom_bar(stat="identity") +
   xlab("Time Of Day") +
   ylab("Delay Rate") +
   scale_y_continuous(labels = scales::percent) +
+  labs(title="Fig 4. Probability of Delay by Time of Day") +
   theme_gray()
 timeofday_bar
 
 ```
 
-4.
-```{r}
-dayofweek_count <- train %>%
-  dplyr::select(DAY_OF_WEEK,ARR_DEL15) %>%
-  group_by(DAY_OF_WEEK) %>%
-  summarise(total=n(),delay=sum(ARR_DEL15==1),percentage=(delay/total))
+###Fig 4 shows the probability of delay by Time of Day. I created a new variable "TimeOfDay" by splitting of hour variable into six hour segments:
 
-dayofweek_bar <- ggplot(dayofweek_count,aes(x=DAY_OF_WEEK,y=percentage,fill=DAY_OF_WEEK)) +
+###1. 0am-6am: Midnight
+ 
+###2. 6am-12am: Morning
+ 
+###3. 12am-6pm: Afternoon
+ 
+###4. 6pm-0am: Evening
+
+###As we can see from the plot, flights departured during midnight are more likely delayed.
+
+```{r,echo=FALSE,message=FALSE}
+dayofweek_count <- train %>%
+  group_by(DAY_OF_WEEK,ARR_DEL15) %>%
+  summarise(count=n()) %>%
+  mutate(all=sum(count)) %>%
+  mutate(percentage=count/all)
+
+dayofweek_bar <- ggplot(dayofweek_count) +
+  aes(x=DAY_OF_WEEK,y=percentage,fill=as.factor(ARR_DEL15)) +
   geom_bar(stat="identity") +
   xlab("Day of Week") +
   ylab("Delay Rate") +
+  labs(title="Fig 5. Probability of Delay by Day of Week") +
   scale_y_continuous(labels = scales::percent) +
   theme_gray()
 dayofweek_bar
 ```
 
-5.This figure shows scatter plots of the predictors against the outcome along with a regression line from a flexible “smoother” model. According to these two figures, we can assume that the relationship between the predictors and the outcome is linear.
-```{r}
-library(cowplot) #Arranging plots in a grid
-fig1 <- ggplot(data=train, aes(x = AIR_TIME, y = total_delay)) +
-  geom_point(color ="deeppink2")+
-  geom_smooth(se=F)+
-  labs( x="Air Time(min)", y="Departure + arrival delays(min)")+
-  theme_bw()
+###Fig 5 shows the probability of delay by Day of Week. It shows that flights are more likely delayed on Monday, Saturday and Sunday.
 
-fig2 <- ggplot(data=train, aes(x = TAVG, y = total_delay)) +
-  geom_point(color ="deepskyblue3")+
-  geom_smooth(se=F)+
-  labs( x="Avg Temp(F)", y="Departure + arrival delays(min)")+
-  theme_bw()
-
-plot_grid(fig1, fig2)
-```
-
-6. correlation
-```{r}
-train$WT01 <- as.factor(train$WT01)
-train$WT02 <- as.factor(train$WT02)
-train$WT03 <- as.factor(train$WT03)
-train$WT05 <- as.factor(train$WT05)
-train$WT08 <- as.factor(train$WT08)
-train$SNOW <- as.numeric(train$SNOW)
-data.num <- Filter(is.numeric, train)
-data.num$DEP_TIME <- NULL
-data.num$DEP_DELAY <- NULL
-data.num$DEP_DELAY_GROUP <- NULL
-data.num$ARR_TIME <- NULL
-data.num$ARR_DELAY <- NULL
-data.num$ARR_DELAY_GROUP <- NULL
-data.num$SNOW <- NULL
-correlations <- cor(data.num)
-# dim(correlations)
-# print(correlations)
-
-library(corrplot)
-corrplot(correlations,method="circle")
-# corrplot(correlations)
-##The variables "DEP_DEL15" and "AIR_TIME" are highly correlated with others predictors.
-# train <- train %>% select(-DEP_DEL15,-AIR_TIME)
-```
-
-7.U.S heat map
-```{r}
+```{r,echo=FALSE,message=FALSE}
 library(usmap)
 library(ggplot2)
 
@@ -261,77 +248,53 @@ names(dest_count)[names(dest_count) == 'DEST_STATE_ABR'] <- 'state'
 plot_usmap(data = dest_count, values = "percentage", lines = "red") + 
   scale_fill_continuous(low = "white", high = "red",name = "Delay Rate", 
                         label = scales::comma) + 
-  theme(legend.position = "right")
+  theme(legend.position = "right") +
+  labs(title="Fig 6. Probability of Delay by Destination")
+  
 ```
+ 
+###Fig 6 shows probability of delay by destination in U.S. It is clear that Wyoming has higher delay rate, and we don't have data for flights depature from Atlanta to Alaska and Idaho.
 
-#Feature Selection
-```{r}
-# str(train)
-##change the data class of the filtered data to enable data processing and running algorithms
-train$OP_UNIQUE_CARRIER <- as.factor(train$OP_UNIQUE_CARRIER)
-train$DEST_STATE_ABR <- as.factor(train$DEST_STATE_ABR)
-train$ARR_DEL15 <- as.factor(train$ARR_DEL15)
+```{r,echo=FALSE,message=FALSE}
 train$WT01 <- as.factor(train$WT01)
 train$WT02 <- as.factor(train$WT02)
+train$WT03 <- as.factor(train$WT03)
 train$WT05 <- as.factor(train$WT05)
 train$WT08 <- as.factor(train$WT08)
-train$DEST <- as.factor(train$DEST)
-train$Rank <- as.factor(train$Rank)
+train$SNOW <- as.numeric(train$SNOW)
 
-##Clean
-train$ORIGIN <- NULL
-train$ORIGIN_CITY_NAME <- NULL
-train$ORIGIN_STATE_ABR <- NULL
-train$DEST_CITY_NAME <- NULL
-train$DEP_TIME <- NULL
-train$ARR_TIME <- NULL
-train$NAME <- NULL
-train$DATE <- NULL
-train$Description <- NULL
-train$WT03 <- NULL
-train$WT05 <- NULL
-train$WT08 <- NULL
-train$DEP_DELAY_GROUP <- NULL
-train$ARR_DELAY_GROUP <- NULL
-train$DEST <- NULL
+data.num <- Filter(is.numeric, train)
 
-# str(train)
+data.num$DEP_TIME <- NULL
+data.num$DEP_DELAY <- NULL
+data.num$DEP_DELAY_GROUP <- NULL
+data.num$ARR_TIME <- NULL
+data.num$ARR_DELAY <- NULL
+data.num$ARR_DELAY_GROUP <- NULL
+data.num$SNOW <- NULL
 
-#try 1(keep)
-# library(Boruta)
-# boruta_output <- Boruta(total_delay~., data = train, doTrace = 2)
-# boruta_signif <- names(boruta_output$finalDecision[boruta_output$finalDecision %in% c("Confirmed", "Tentative")])
-# print(boruta_signif)
-# plot(boruta_output, cex.axis=.5, las=2, xlab="", main="Variable Importance")
-## Boruta performed 99 iterations in 6.7969 mins.
-## 16 attributes confirmed important: AIR_TIME, ARR_DEL15, ARR_DELAY, AWND, DAY_OF_MONTH and 11 more;
-## 2 attributes confirmed unimportant: DEST_STATE_ABR, SNOW;
-## 1 tentative attributes left: WT03;
+correlations <- cor(data.num)
+library(corrplot)
+corrplot(correlations,method="circle",title="Fig 7.Correlation Plot",mar=c(0,0,1,0))
 
-# train <- train %>% select(-DEST_STATE_ABR,-SNOW,-DEP_DELAY,-ARR_DELAY)
-train <- train %>% dplyr::select(-DEST_STATE_ABR,-SNOW)
-
-# #try 2
-# base.mod <- lm(total_delay ~ 1 , data= train)  # base intercept only model
-# all.mod <- lm(total_delay ~ . , data= train) # full model with all predictors
-# stepMod <- step(base.mod, scope = list(lower = base.mod, upper = all.mod), direction = "forward", trace = 0)  # perform step-wise algorithm
-# shortlistedVars <- names(unlist(stepMod[[1]])) # get the shortlisted variable.
-# shortlistedVars <- shortlistedVars[!shortlistedVars %in% "(Intercept)"]  # remove intercept 
-# print(shortlistedVars)
-# 
-# #try 3
-# library(randomForest)
-# str(train)
-# rf=randomForest(total_delay ~ . , data = train)
-
-
-
+# train <- train %>% select(-DEP_DEL15,-AIR_TIME)
 ```
 
+###Fig 7 visually examine the between-predictor of the data.The variables "DEP_DEL15" and "AIR_TIME" are highly correlated with others predictors. So we remove them from potential predictors.
 
-#test sample
-```{r}
-# #use "ARR_DEL15" as y
+##3.2 Model used
+
+```{r,message=FALSE}
+#Multilevel logistic model
+library(car)
+library(lme4)
+train$OP_UNIQUE_CARRIER <- as.factor(train$OP_UNIQUE_CARRIER)
+m3 <- glmer(ARR_DEL15 ~  (1|OP_UNIQUE_CARRIER)  + scale(DISTANCE) + DAY_OF_MONTH + WT01 + WT02 + DAY_OF_WEEK + TAVG + (1|TimeOfDay), data = train,  family = binomial(link = "logit"))
+summary(m3)
+```
+
+```{r,echo=FALSE,message=FALSE}
+#prepare test dataset
 test <- test %>%
   mutate(TimeOfDay = cut(DEP_TIME, c(0, 600, 1200, 1800, 2400),
                      labels = c("Midnight", "Morning", "Afternoon","Evening"), right = TRUE)) %>%
@@ -345,131 +308,179 @@ test$DEP_DEL15 <- as.factor(test$DEP_DEL15)
 test$WT01 <- as.factor(test$WT01)
 test$WT02 <- as.factor(test$WT02)
 test$DAY_OF_MONTH <- as.numeric(test$DAY_OF_MONTH)
-train$DAY_OF_MONTH <- as.numeric(train$DAY_OF_MONTH)
 
-
-#################
-##use "total_delay" as y
-# test <- test %>%
-#   mutate(TimeOfDay = cut(DEP_TIME, c(0, 600, 1200, 1800, 2400),
-#                      labels = c("Midnight", "Morning", "Afternoon","Evening"), right = TRUE)) %>%
-#   select(DAY_OF_MONTH,DAY_OF_WEEK,OP_UNIQUE_CARRIER,ARR_DEL15,DEP_DEL15,AIR_TIME,DISTANCE,WT01,WT02,AWND,TAVG,PRCP,Rank,total_delay,TimeOfDay) %>%
-#   filter(OP_UNIQUE_CARRIER %in% train$OP_UNIQUE_CARRIER)
-# 
-# test$OP_UNIQUE_CARRIER <- as.factor(test$OP_UNIQUE_CARRIER)
-# test$ARR_DEL15 <- as.factor(test$ARR_DEL15)
-# test$DEP_DEL15 <- as.factor(test$DEP_DEL15)
-# test$WT01 <- as.factor(test$WT01)
-# test$WT02 <- as.factor(test$WT02)
-# # test$Rank <- as.factor(test$Rank)
-# test$DAY_OF_MONTH <- as.numeric(test$DAY_OF_MONTH)
-# train$DAY_OF_MONTH <- as.numeric(train$DAY_OF_MONTH)
-# 
-# train <- train %>% select(-DEP_DELAY,-ARR_DELAY)
-# train$DAY_OF_WEEK <- as.factor(train$DAY_OF_WEEK)
-# train$DEP_DEL15 <- as.factor(train$DEP_DEL15)
+#predict by using Logistic Multilevel Model(m3)
+m3.predict <- predict(m3, test,type="response")
+m3.predict <- ifelse(m3.predict > 0.5,1,0)
+head(m3.predict)
+m3.predict <- as.factor(m3.predict)
+compare <- data.frame(obs = test$ARR_DEL15, pred = m3.predict)
+library(caret)
+confusionMatrix(m3.predict, test$ARR_DEL15)
 
 ```
 
 
+###Fig 8.Binned Residual Plot for Multilevel Logistic Regression
+```{r,echo=FALSE,message=FALSE}
+library(arm)
+binnedplot(fitted(m3),residuals(m3,type="response"))
+```
 
-#Model
-```{r warning=FALSE}
+###I applied multilevel logistic regression model by put different carrier and time of flight departures into groups, however, unfortunately the model gives lower accuracy with 56%. And binned residual plot also shows a wired trend(Fig 8). 
+
+#4 Result
+
+##4.1 Model choice
+
+```{r,echo=FALSE}
 # str(train)
+##change the data class of the filtered data to enable data processing and running algorithms
+train$OP_UNIQUE_CARRIER <- as.factor(train$OP_UNIQUE_CARRIER)
+train$DEST_STATE_ABR <- as.factor(train$DEST_STATE_ABR)
+train$ARR_DEL15 <- as.factor(train$ARR_DEL15)
+train$WT01 <- as.factor(train$WT01)
+train$WT02 <- as.factor(train$WT02)
+train$WT05 <- as.factor(train$WT05)
+train$WT08 <- as.factor(train$WT08)
+train$DEST <- as.factor(train$DEST)
 
-## linear model
-# train <- train[train$total_delay<=1440,]
-# test <- test[test$total_delay<=1440,]
-# m1 <- lm(total_delay ~ DAY_OF_MONTH + DAY_OF_WEEK + OP_UNIQUE_CARRIER + DEP_DEL15 + ARR_DEL15 +
-#            AIR_TIME + WT01 + WT02 + AWND + TAVG + PRCP + TimeOfDay, data = train)
-# summary(m1)
-# plot(m1, which = 1)
-# 
-# par(mfrow= c(2,3))
-# plot(m1, which = 1:6)
-# 
-# m1.predict <- predict(m1, test)
-# actuals_preds <- data.frame(cbind(actuals=test$total_delay, predicteds=m1.predict))
-# correlation_accuracy <- cor(actuals_preds)
-# correlation_accuracy
-# head(actuals_preds)
-# 
-# library(car)
-# marginalModelPlots(m1)
+# library(Boruta)
+# boruta_output <- Boruta(ARR_DEL15~., data = train, doTrace = 2)
+# boruta_signif <- names(boruta_output$finalDecision[boruta_output$finalDecision %in% c("Confirmed", "Tentative")])
+# print(boruta_signif)
+# plot(boruta_output, cex.axis=.5, las=2, xlab="", main="Variable Importance")
+```
 
-# min_max_accuracy <- mean(apply(actuals_preds, 1, min) / apply(actuals_preds, 1, max))
-# min_max_accuracy
-# mape <- mean(abs((actuals_preds$predicteds - actuals_preds$actuals))/actuals_preds$actuals)
-# mape
+###Fig 9. Boruta Feature Selection Result
+```{r,out.width = "75%",echo=FALSE}
+library(knitr)
+knitr::include_graphics("/Users/CindyWang/Desktop/678/midterm_project/boruta.jpg")
+```
 
+###To start building the model, I start with feature selection using Boruta to decide if a variable is important or not. Fig 8 is the box plot of variable importance that Boruta produced.To predict the Arrival delay, the following attributes are considered in feature selection out of which “DEST_STATE_ABR” and “SNOW” happen to have the least influence on the delays, therefore we exclude them from the model. 
 
-
-
-# ## multilevel model
-# library(lme4)
-# m2 <- lmer(scale(total_delay) ~ DAY_OF_MONTH + DAY_OF_WEEK + DEP_DEL15 + ARR_DEL15 +AIR_TIME + DISTANCE + WT01 + WT02 + AWND + TAVG + PRCP + Rank + TimeOfDay + (1|OP_UNIQUE_CARRIER), data = train)
-# summary(m2)
-
-
-# ##multilevel logistic model
-# library(car)
-# library(lme4)
-# m3 <- glmer(ARR_DEL15 ~ DAY_OF_MONTH  + (1|OP_UNIQUE_CARRIER)  + WT01 + WT02 + AWND + TAVG + PRCP + 
-#            DAY_OF_WEEK + TimeOfDay + DISTANCE, data = train,  family = binomial(link = "logit"))
-# summary(m3)
-# # marginalModelPlots(m3)
-# 
-# m3.predict <- predict(m3, test,type="response")
-# m3.predict <- ifelse(m3.predict > 0.5,1,0)
-# head(m3.predict)
-# m3.predict <- as.factor(m3.predict)
-# compare <- data.frame(obs = test$ARR_DEL15, pred = m3.predict)
-# library(caret)
-# confusionMatrix(m3.predict, test$ARR_DEL15)
-
-
-##logistic model
+```{r,warning=FALSE}
+#Logistic Model
 library(car)
-m4 <- glm(ARR_DEL15 ~ DAY_OF_MONTH  + OP_UNIQUE_CARRIER  + WT01 + WT02 + AWND + TAVG + PRCP +
-           DAY_OF_WEEK + TimeOfDay + DISTANCE, data = train,  family = binomial(link = "logit"))
-summary(m4)
-marginalModelPlots(m4)
-#Marginal model plot drawing response variable against each predictors and linear predictor. Fitted values are compared to observed data.
+m4 <- glm(ARR_DEL15 ~ DAY_OF_MONTH  + OP_UNIQUE_CARRIER  + WT01 + WT02 + poly(AWND,3) + TAVG + poly(PRCP,5) + DAY_OF_WEEK + TimeOfDay + DISTANCE, data = train,  family = binomial(link = "logit"))
+```
 
+###Fig 9.Marginal Model Plot for Logistic Regression
+```{r}
+marginalModelPlots(m4)
+```
+
+###Fig 9 is Marginal Model Plots drawing response variable against each predictors and linear predictor. Fitted values(red lines) are compared to observed data(blue line). I also transformed some of my predictors since they are not having linear relationship with the outcome, such as AWND and PRCP.
+
+##4.2 Interpretation
+
+```{r}
+summary(m4)
+```
+
+###In the output above, the first thing we see is the call, there are 10 predictors finally used in model which are: DAY_OF_MONTH,OP_UNIQUE_CARRIER,WT01,WT02,AWND,TAVG,PRCP, DAY_OF_WEEK,TimeOfDay, and DISTANCE. 
+
+###The next part of the output shows the coefficients, their standard errors, the z-statistic (sometimes called a Wald z-statistic), and the associated p-values. In this model, most of predictor variables are statistically significant, except two terms of airline carrier. The logistic regression coefficients give the change in the log odds of the outcome for a one unit increase in the predictor variable.
+
+####Therefore, for example, for every one unit change in day of month(DAY_OF_MONTH), the log odds of delay over 15 min (versus under 15 min) decreases by 0.0196.
+
+####For a one unit increase in average temperature(TAVG), the log odds of delay increases by 0.000439.
+
+####The catagorical indicator variables have a slightly different interpretation. For example, flights departs in the morning, versus departs in the the midnight, change the log odds of delay by -3.086.
+
+###Below the table of coefficients are fit indices, including the null and deviance residuals and the AIC. In our model, the residual deviance decreases from null deviance which means the predictor variables made the model performs better.
+
+##4.3 Model checking
+
+```{r,echo=FALSE}
+#predict Jan.2018 flights
 m4.predict <- predict(m4, test,type="response")
 m4.predict <- ifelse(m4.predict > 0.5,1,0)
 head(m4.predict)
 m4.predict <- as.factor(m4.predict)
 compare <- data.frame(obs = test$ARR_DEL15, pred = m4.predict)
+```
+
+###Before model checking, firstly we need to preapre test dataset. I use Jan.2018 flights history as testing data and select all predictors are selected above.
+
+```{r,warning=FALSE}
+#Confusion Matrix
 library(caret)
 confusionMatrix(m4.predict, test$ARR_DEL15)
+```
 
-##model test
+###The first method I used to test my model is Confusion Matrix. The number of correct predictions is along the diagonal– where correct was 0 and the prediction was 0 and where correct was 1 and the prediction was 1. Based on the result, most of the data points are classified as class "0", and the overall accuracy is 68.72% which is the sum of the diagonal divided by the sum of the whole matrix.
+
+###Fig 10. Binned Residual Plot for Logistic Regression
+```{r,echo=FALSE}
 #binned residual plot
 library(arm)
 binnedplot(fitted(m4),residuals(m4,type="response"))
-library(car)
-residualPlots(m4)
+```
 
+###The other method is Binned Residual Plot. Fig 10 shows many points fall inside the confidence bands and there is not a distinctive pattern to the residuals.
+
+```{r,echo=FALSE}
 #ROC
 library(pROC)
 rocCurve <- roc(response = test$ARR_DEL15, predictor = as.numeric(m4.predict), levels = rev(levels(test$ARR_DEL15)))
-plot(rocCurve, legacy.axes = TRUE)
-
-
-library(randomForest) 
-random_forest <- randomForest(train[-7], train$ARR_DEL15, proximity = TRUE, importance = TRUE)
-random_forest
-random_forest_validation <- predict(random_forest, test)
-
-
+plot(rocCurve, legacy.axes = TRUE,print.auc=TRUE, auc.polygon=TRUE, 
+     grid=c(0.1, 0.2),grid.col=c("green", "red"), max.auc.polygon=TRUE,
+     auc.polygon.col="orange", print.thres=TRUE,main="Fig 11. ROC Curve Plot of Logistic Regression")
 ```
 
+###The last method I used is ROC curve. The ROC curve shows the trade-off between sensitivity (or TPR) and specificity (1 – FPR). Fig 11 shows the model gives curve closer to the top-left corner indicate it has better performance. 
 
+#5 Discussion
 
+##5.1 Implication
 
+###The results of this study have implications for potential positive social change on the individual level. Passengers especially those who travels for a living might need a model to predict how likely their flights will delay and prepare for another plan early.  
 
+##5.2 Limitation
 
+###The limitation of the model is that I only use January's flights history as training data and only picked ATL as origin departure location since I don't have weather data for all locations in U.S. The limited data used for training this model could lead some problem when applying other location's flights and weather information to it.
 
+##5.3 Future direction
 
+###A future analysis using machine learning methods may be conducted to carry out the estimation of delays flights departing from ATL, for instance SVM, random forests those like machine learning method can be used in this matter.
+
+#6 Acknowledgement
+
+###I would like to acknowledge with much appreciation the crucial role of Dr.Yajima, who gave me a lot of suggestions when I confronted with difficulties. A special thanks goes to Bureau of Transportation that provides me the dataset. 
+
+#7 Reference
+
+*Fahad Alsehami. Medium. Weblog. [Online] Available from: https://medium.com/@famsfsu/predicting-flight-delay-u-s-airports-886748c617d5 [Accessed 11th November 2018].*
+
+*Ayman Siraj. RPubs. Weblog. [Online] Available from: https://rpubs.com/aymansir/usflightdelay [Accessed 11th November 2018].*
+
+#8 Appendix
+
+###Fig 12. Box Plot for each numeric predictor(AWND,TAVG,DISTANCE,PRCP) vs. response variable(ARR_DEL15)
+```{r,echo=FALSE}
+library(cowplot)
+a <- ggplot(train) + 
+  aes(x=ARR_DEL15, y=AWND,color=ARR_DEL15) +
+  geom_boxplot() +
+  theme(legend.position="none")
+
+b <- ggplot(train) + 
+  aes(x=ARR_DEL15, y=TAVG,color=ARR_DEL15) +
+  geom_boxplot() +
+  theme(legend.position="none")
+
+c <- ggplot(train) + 
+  aes(x=ARR_DEL15, y=DISTANCE,color=ARR_DEL15) +
+  geom_boxplot() +
+  theme(legend.position="none")
+
+d <- ggplot(train) + 
+  aes(x=ARR_DEL15, y=PRCP,color=ARR_DEL15) +
+  geom_boxplot() +
+  theme(legend.position="none")
+
+plot_grid(a,b,c,d)
+```
 
